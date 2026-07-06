@@ -10,11 +10,5 @@
     "api/shipments/*.js": {
       "runtime": "nodejs18.x"
     }
-  },
-  "crons": [
-    {
-      "path": "/api/cron/poll",
-      "schedule": "0 10 * * *"
-    }
-  ]
+  }
 }
