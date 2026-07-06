@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "api/*.js": { "runtime": "nodejs18.x" },
+    "api/cron/*.js": { "runtime": "nodejs18.x" },
+    "api/shipments/*.js": { "runtime": "nodejs18.x" }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/poll",
+      "schedule": "0 */2 * * *"
+    }
+  ]
+}
