@@ -1,18 +1,4 @@
 {
-  "version": 2,
-  "functions": {
-    "api/*.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/cron/*.js": {
-      "runtime": "nodejs18.x"
-    },
-    "api/shipments/*.js": {
-      "runtime": "nodejs18.x"
-    }
-  }
-
-  
+  "version": 2
 }
-
 
