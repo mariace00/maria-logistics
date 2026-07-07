@@ -26,6 +26,7 @@ export async function checkHapag(container) {
       pod: data.pod || '',
       company: data.company || 'Hapag-Lloyd',
       vessel: data.vessel || '',
+      _debugRaw: data, // TEMPORARY - remove once we confirm the real field shape
     };
   } catch (e) {
     return blank(container, String(e.message || e));
