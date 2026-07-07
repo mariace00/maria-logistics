@@ -77,6 +77,3 @@ export async function renderAndCapture(url, { urlIncludes, evaluateFn, waitMs = 
 
   return { capturedJson, html, evaluated, seenResponses, pageTitle, htmlLength: html.length };
 }
-
-  return { capturedJson, html, evaluated };
-}
