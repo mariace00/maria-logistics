@@ -36,22 +36,23 @@ export async function renderAndCapture(url, { urlIncludes, evaluateFn, waitMs = 
   await page.setViewport({ width: 1280, height: 900 });
 
   let capturedJson = null;
-  if (urlIncludes) {
-    page.on('response', async (res) => {
-      try {
-        if (capturedJson) return;
-        const reqUrl = res.url();
-        const matches = urlIncludes.some((frag) => reqUrl.includes(frag));
-        if (!matches) return;
-        const ct = res.headers()['content-type'] || '';
-        if (!ct.includes('application/json')) return;
+  const seenResponses = [];
+  page.on('response', async (res) => {
+    try {
+      const reqUrl = res.url();
+      const ct = res.headers()['content-type'] || '';
+      if (ct.includes('application/json') && !reqUrl.includes('.js') && !reqUrl.includes('.css')) {
+        seenResponses.push(reqUrl);
+      }
+      if (capturedJson) return;
+      if (urlIncludes && urlIncludes.some((frag) => reqUrl.includes(frag)) && ct.includes('application/json')) {
         const json = await res.json().catch(() => null);
         if (json) capturedJson = json;
-      } catch {
-        // ignore individual response parse failures, keep listening
       }
-    });
-  }
+    } catch {
+      // ignore individual response parse failures, keep listening
+    }
+  });
 
   try {
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
@@ -59,7 +60,6 @@ export async function renderAndCapture(url, { urlIncludes, evaluateFn, waitMs = 
     // page may still have partially rendered / fired the responses we want
   }
 
-  // Give any late XHR/fetch calls a moment to land and be captured above.
   await new Promise((r) => setTimeout(r, waitMs));
 
   let evaluated = null;
@@ -72,7 +72,11 @@ export async function renderAndCapture(url, { urlIncludes, evaluateFn, waitMs = 
   }
 
   const html = await page.content().catch(() => '');
+  const pageTitle = await page.title().catch(() => '');
   await page.close().catch(() => {});
+
+  return { capturedJson, html, evaluated, seenResponses, pageTitle, htmlLength: html.length };
+}
 
   return { capturedJson, html, evaluated };
 }
