@@ -31,14 +31,22 @@ export async function checkHapag(container) {
     `https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container=${prefix}%20${number}`;
 
   try {
-    const { capturedJson, evaluated } = await renderAndCapture(trackingUrl, {
+    const { capturedJson, evaluated, seenResponses, pageTitle, htmlLength, html } = await renderAndCapture(trackingUrl, {
       urlIncludes: ['track', 'container', 'tracing'],
       evaluateFn: `(() => { try { return window.appData || null; } catch (e) { return null; } })()`,
     });
 
     const source = capturedJson || evaluated;
     if (!source) {
-      return blank(trackingUrl, 'No tracking data found - page may have changed or container not found');
+      return {
+        ...blank(trackingUrl, 'No tracking data found - page may have changed or container not found'),
+        debug: {
+          pageTitle,
+          htmlLength,
+          jsonResponsesSeen: seenResponses.slice(0, 15),
+          htmlSnippet: html ? html.replace(/\s+/g, ' ').slice(0, 800) : '',
+        },
+      };
     }
 
     const eta = deepFind(source, FIELD_CANDIDATES.eta);
