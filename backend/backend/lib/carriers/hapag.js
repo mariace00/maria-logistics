@@ -1,134 +1,93 @@
 // lib/carriers/hapag.js
-// Same scraping logic as your original hapag.js, refactored into a plain function
-// so both api/hapag.js (manual single lookups) and the cron job can call it directly
-// without an HTTP round trip.
+// Uses a real (headless) browser instead of a plain fetch, since Hapag-Lloyd's
+// tracking page is a JavaScript-rendered app - confirmed by fetching it
+// directly and finding only "this app doesn't work without JavaScript
+// enabled" in the raw HTML. This actually executes the page's JS so the
+// site's own code populates the tracking data.
+//
+// Because the exact internal API shape isn't something we could verify
+// ahead of time (no network access to hapag-lloyd.com from the build
+// environment), this tries two strategies and a flexible field search
+// rather than one brittle fixed schema:
+//   1. Capture any JSON network response the page itself makes that looks
+//      tracking-related.
+//   2. Fall back to reading `window.appData` directly from the rendered
+//      page's JS runtime (the original scraper's marker, which may still
+//      be set as a real JS global even though it's no longer in the raw
+//      HTML source).
+import { renderAndCapture } from '../browser.js';
+
+const FIELD_CANDIDATES = {
+  eta: ['eta', 'ETA', 'estimatedArrival', 'estimatedTimeOfArrival'],
+  latestLog: ['lastEventName', 'lastEvent', 'latestEvent', 'status', 'eventName', 'currentStatus'],
+  pod: ['lastLocation', 'location', 'currentLocation', 'portOfDischarge', 'pod'],
+  vessel: ['vesselName', 'vessel', 'currentVessel', 'mainVessel'],
+};
 
 export async function checkHapag(container) {
   const prefix = container.slice(0, 4);
   const number = container.slice(4);
-  const encoded = `${prefix}%20${number}`;
+  const trackingUrl =
+    `https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container=${prefix}%20${number}`;
 
-  const url =
-    `https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container=${encoded}`;
+  try {
+    const { capturedJson, evaluated } = await renderAndCapture(trackingUrl, {
+      urlIncludes: ['track', 'container', 'tracing'],
+      evaluateFn: `(() => { try { return window.appData || null; } catch (e) { return null; } })()`,
+    });
 
-  const html = await fetchHTML(url);
+    const source = capturedJson || evaluated;
+    if (!source) {
+      return blank(trackingUrl, 'No tracking data found - page may have changed or container not found');
+    }
 
-  const appData = extractAppData(html);
-  if (appData && appData.containerData) {
-    const c = appData.containerData;
+    const eta = deepFind(source, FIELD_CANDIDATES.eta);
+    const latestLog = deepFind(source, FIELD_CANDIDATES.latestLog);
+    const pod = deepFind(source, FIELD_CANDIDATES.pod);
+    const vessel = deepFind(source, FIELD_CANDIDATES.vessel);
+
     return {
       success: true,
-      trackingUrl: url,
-      eta: c.eta || '',
-      latestLog: c.lastEventName || '',
-      pod: c.lastLocation || '',
-      type: c.containerType || '',
+      trackingUrl,
+      eta: eta || '',
+      latestLog: latestLog || '',
+      pod: pod || '',
       company: 'Hapag-Lloyd',
-      vessel: c.vesselName || '',
-      movements: c.movements || normalizeEvents(c.containerEvents) || [],
+      vessel: vessel || '',
     };
+  } catch (e) {
+    return blank(trackingUrl, String(e.message || e));
   }
-
-  const movements = extractMovements(html);
-  if (!movements.length) return blank(url);
-
-  const summary = summarize(movements);
-  return {
-    success: true,
-    trackingUrl: url,
-    eta: summary.eta,
-    latestLog: summary.latestLog,
-    pod: summary.pod,
-    type: summary.type,
-    company: summary.company,
-    vessel: summary.vessel,
-    movements,
-  };
 }
 
-function blank(url) {
-  return { success: true, trackingUrl: url, eta: '', latestLog: '', pod: '', type: '', company: '', vessel: '', movements: [] };
+function blank(trackingUrl, error) {
+  return { success: true, trackingUrl, eta: '', latestLog: '', pod: '', company: '', vessel: '', error };
 }
 
-async function fetchHTML(url) {
-  const res = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0',
-      Accept: 'text/html',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Cache-Control': 'no-cache',
-      Pragma: 'no-cache',
-    },
-  });
-  return await res.text();
-}
+/** Recursively searches obj for the first key (case-insensitive) matching
+ *  any of candidateNames, returning its value if it's a string or number. */
+function deepFind(obj, candidateNames, depth = 0) {
+  if (depth > 6 || obj === null || typeof obj !== 'object') return null;
+  const lowerCandidates = candidateNames.map((c) => c.toLowerCase());
 
-function extractAppData(html) {
-  const marker = 'window.appData = ';
-  const start = html.indexOf(marker);
-  if (start === -1) return null;
-  const jsonStart = start + marker.length;
-  const jsonEnd = html.indexOf(';</script>', jsonStart);
-  if (jsonEnd === -1) return null;
-  try {
-    return JSON.parse(html.substring(jsonStart, jsonEnd).trim());
-  } catch {
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const found = deepFind(item, candidateNames, depth + 1);
+      if (found) return found;
+    }
     return null;
   }
-}
 
-function normalizeEvents(events) {
-  if (!events || !Array.isArray(events)) return [];
-  return events.map(e => ({
-    status: e.eventName || '',
-    location: e.locationName || '',
-    date: e.eventDate || '',
-    time: e.eventTime || '',
-    transport: e.vesselName || '',
-  }));
-}
-
-function extractMovements(html) {
-  const rows = [];
-  const regex = /<tr[^>]*>(.*?)<\/tr>/gs;
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    const cells = [...match[1].matchAll(/<td[^>]*>(.*?)<\/td>/gs)].map(c => clean(c[1]));
-    if (cells.length < 3) continue;
-    rows.push({ status: cells[0] || '', location: cells[1] || '', date: cells[2] || '', time: cells[3] || '', transport: cells[4] || '' });
-  }
-  return rows;
-}
-
-function clean(str) {
-  return str.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-}
-
-function summarize(movements) {
-  const parsed = movements
-    .map(m => {
-      const d = m.date.match(/(\d{4}-\d{2}-\d{2})/);
-      return { ...m, parsedDate: d ? d[1] : null };
-    })
-    .filter(m => m.parsedDate);
-
-  if (!parsed.length) return { eta: '', latestLog: '', pod: '', type: '', company: '', vessel: '' };
-
-  parsed.sort((a, b) => (a.parsedDate < b.parsedDate ? 1 : -1));
-  const latest = parsed[0];
-  const type = latest.transport.toLowerCase() === 'rail' ? 'Rail' : 'Port';
-
-  let vessel = '';
-  if (type === 'Port') {
-    vessel = latest.transport !== 'Rail' ? latest.transport : '';
-  } else {
-    for (let i = 1; i < parsed.length; i++) {
-      if (parsed[i].transport && parsed[i].transport.toLowerCase() !== 'rail') {
-        vessel = parsed[i].transport;
-        break;
-      }
+  for (const [key, value] of Object.entries(obj)) {
+    if (lowerCandidates.includes(key.toLowerCase())) {
+      if (typeof value === 'string' || typeof value === 'number') return String(value);
     }
   }
-
-  return { eta: latest.parsedDate, latestLog: latest.status, pod: latest.location || '', type, company: 'Hapag-Lloyd', vessel };
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object') {
+      const found = deepFind(value, candidateNames, depth + 1);
+      if (found) return found;
+    }
+  }
+  return null;
 }
