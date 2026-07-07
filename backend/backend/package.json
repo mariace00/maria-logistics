@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "@vercel/postgres": "^0.9.0"
+    "@vercel/postgres": "^0.9.0",
+    "@sparticuz/chromium": "^123.0.1",
+    "puppeteer-core": "^22.4.1"
   }
 }
