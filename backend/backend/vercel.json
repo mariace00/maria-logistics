@@ -2,8 +2,20 @@
   "version": 2,
   "installCommand": "npm install",
   "functions": {
-    "api/hapag.js": { "maxDuration": 60, "memory": 1024 },
-    "api/msc.js": { "maxDuration": 60, "memory": 1024 },
-    "api/cron/poll.js": { "maxDuration": 60, "memory": 1024 }
+    "api/hapag.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
+    },
+    "api/msc.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
+    },
+    "api/cron/poll.js": {
+      "maxDuration": 60,
+      "memory": 1024,
+      "includeFiles": "node_modules/@sparticuz/chromium/**"
+    }
   }
 }
