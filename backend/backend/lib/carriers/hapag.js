@@ -25,15 +25,13 @@ const FIELD_CANDIDATES = {
 };
 
 export async function checkHapag(container) {
-  const prefix = container.slice(0, 4);
-  const number = container.slice(4);
-  const trackingUrl =
-    `https://www.hapag-lloyd.com/en/online-business/track/track-by-container-solution.html?container=${prefix}%20${number}`;
+  const trackingUrl = `https://www.hapag-lloyd.com/solutions/tracking/#/${container}`;
 
   try {
     const { capturedJson, evaluated, seenResponses, pageTitle, htmlLength, html } = await renderAndCapture(trackingUrl, {
-      urlIncludes: ['track', 'container', 'tracing'],
-      evaluateFn: `(() => { try { return window.appData || null; } catch (e) { return null; } })()`,
+      urlIncludes: ['track', 'container', 'tracing', 'shipment', 'graphql', 'api'],
+      evaluateFn: `(() => { try { return window.appData || window.__NUXT__ || window.__INITIAL_STATE__ || null; } catch (e) { return null; } })()`,
+      waitMs: 9000,
     });
 
     const source = capturedJson || evaluated;
@@ -97,5 +95,7 @@ function deepFind(obj, candidateNames, depth = 0) {
       if (found) return found;
     }
   }
+  return null;
+}
   return null;
 }
