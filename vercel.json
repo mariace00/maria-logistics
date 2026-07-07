@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "installCommand": "npm install",
+  "functions": {
+    "api/hapag.js": { "maxDuration": 60, "memory": 1024 },
+    "api/msc.js": { "maxDuration": 60, "memory": 1024 },
+    "api/cron/poll.js": { "maxDuration": 60, "memory": 1024 }
+  }
+}
