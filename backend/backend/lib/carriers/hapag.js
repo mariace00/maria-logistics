@@ -97,5 +97,3 @@ function deepFind(obj, candidateNames, depth = 0) {
   }
   return null;
 }
-  return null;
-}
